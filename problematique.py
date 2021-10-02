@@ -1,3 +1,6 @@
+# Problematique
+# Laba0902 - degj2706
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import wavfile
