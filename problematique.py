@@ -12,27 +12,46 @@ def getTFD(x_n):
 
     return X_m, X_phase, X_magnitude
 
+def getPrincipalSinusoids(X_phase, X_magnitude, max):
+    indexes = []
+    treshhold = 0.1
+
+    for i in range (len(X_magnitude)):
+        if(X_magnitude[i] > treshhold*max and X_magnitude[i] > X_magnitude[i-1] and X_magnitude[i] > X_magnitude[i+1]):
+            indexes.append(i)
+
+    principal_phases = [X_phase[i] for i in indexes]
+    principal_magnitudes = [X_magnitude[i] for i in indexes]
+
+    return principal_phases, principal_magnitudes;
+
 def analyzeWav(file):
     fe, x_n = wavfile.read(file)
 
     X_m, X_phase, X_magnitude = getTFD(x_n)
 
+    max_amplitude = np.amax(X_magnitude)
+
+    principal_phases, principal_magnitudes = getPrincipalSinusoids(X_phase, X_magnitude, max_amplitude)
+
+    print(principal_phases)
+    print(principal_magnitudes)
+
     plt.subplot(211)
     plt.title("Fonction")
-    plt.stem(x_n)
+    plt.plot(x_n)
 
     plt.subplot(223)
     plt.title("Phase")
-    plt.stem(X_phase)
+    plt.stem(principal_phases)
 
     plt.subplot(224)
     plt.title("Magnitude")
-    plt.stem(X_magnitude)
+    plt.stem(principal_magnitudes)
 
     plt.show()
 
-    for i in range(32):
-        m = np.argmax(X_m)
+
 
 
 if __name__ == "__main__":
