@@ -5,23 +5,21 @@ from scipy.io import wavfile
 filePath = "./note_guitare_LAd.wav"
 
 
-def synthetize_signal(phases, magnitudes, enveloppe):
-    w = [2 * np.pi * m / len(magnitudes) for m in range(len(magnitudes))]
+def synthetize_signal(X_m, m_indexes, envelope, nb_ech):
+    phases = np.angle(X_m)
+    magnitudes = np.abs(X_m)
 
-    recomposed_sine = np.zeros(len(enveloppe))
+    ws = [2 * np.pi * m / nb_ech for m in m_indexes]
 
-    for n in range(len(enveloppe)):
-        recomposed_sine[n] = np.sum(magnitudes * np.sin(np.multiply(n,w) + phases))
+    sum_sines = np.zeros(len(envelope))
 
-    plt.plot(recomposed_sine)
-    plt.show()
+    for n in range(len(envelope)):
+        sum_sines[n] = np.sum(magnitudes * np.sin(np.multiply(n,ws) + phases))
 
-    recomposed_note = recomposed_sine * enveloppe
+    synthetized_signal = sum_sines * envelope
 
-    plt.plot(recomposed_note)
-    plt.show()
+    return synthetized_signal
 
-    return recomposed_note
 
 def get_tfd(x_n):
     X_m = np.fft.fft(x_n)
@@ -32,34 +30,36 @@ def get_tfd(x_n):
     return X_m, X_phase, X_magnitude
 
 
-def get_principal_sinusoids(X_m, X_phase, X_magnitude, max):
-    indexes = []
-    threshold = 0.1
+def get_principal_sinusoids(X_m):
+    # Fin max amplitude from X_m
+    X_max = np.amax(abs(X_m))
+    m_indexes = []
+    treshold = X_max * 0.1
 
-    for i in range(len(X_magnitude)):
-        if X_magnitude[i] > threshold * max and X_magnitude[i] > X_magnitude[i - 1] and X_magnitude[i] > X_magnitude[
-            i + 1]:
-            indexes.append(i)
+    X_magnitudes = np.abs(X_m)
 
-    principal_X_m = [X_m[i] for i in indexes]
-    principal_phases = [X_phase[i] for i in indexes]
-    principal_magnitudes = [X_magnitude[i] for i in indexes]
+    for i in range(len(X_magnitudes)):
 
-    return principal_X_m, principal_phases, principal_magnitudes
+        if X_magnitudes[i] > treshold and X_magnitudes[i] > X_magnitudes[i-1] and X_magnitudes[i] > X_magnitudes[i+1]:
+            m_indexes.append(i)
+
+    principal_X_m = [X_m[i] for i in m_indexes]
+
+    return m_indexes, principal_X_m
 
 
 def to_db(values):
-    return 20 * np.log10(values);
+    return 20 * np.log10(values)
 
 
-def get_rif_impulse_response(w_barre, p, nb_ech):
+def get_rif_impulse_response(w_barre, p, nb_ech, needs_padding):
     m = int((p * w_barre) / (2 * np.pi))
     K = 2 * m + 1
     h_n = [(1 / p) * (np.sin(np.pi * n * K / p) / np.sin(np.pi * n / p)) if
            n != 0 else K / p for n in range(int(-(p / 2) + 1), int(p / 2))]
     zeros = np.zeros(nb_ech - len(h_n))
     padded_h_n = np.concatenate((h_n, zeros))
-    return padded_h_n
+    return padded_h_n if needs_padding else h_n
 
 
 def get_rif_freq_response(h_n):
@@ -71,12 +71,7 @@ def get_tested_freq_responses(w_barre, orders, nb_ech):
     H_ms = []
     for p in orders:
         # Get equation for filter with order p
-        h_n = get_rif_impulse_response(w_barre, p, nb_ech)
-
-        # Plot stem
-        # plt.stem(h_n)
-        # plt.title('RIF p : ' + str(p))
-        # plt.show()
+        h_n = get_rif_impulse_response(w_barre, p, nb_ech, True)
 
         # Get amplitudes and store it in array
         H_m = get_rif_freq_response(h_n)
@@ -86,11 +81,14 @@ def get_tested_freq_responses(w_barre, orders, nb_ech):
 
 def plot_normalized_freq_responses(H_ms, w_barre, nb_ech, orders, x_range, y_range):
     # Plot H(w), normalize freq to get w instead of m
-    w = [2*np.pi*m/nb_ech for m in range(nb_ech)]
+    w = [2 * np.pi * m / nb_ech for m in range(nb_ech)]
 
     for i in range(len(H_ms)):
         H_m_magnitude_db = to_db(abs(H_ms[i]))
-        plt.plot(w, H_m_magnitude_db, label='p='+str(orders[i]))
+        plt.plot(w, H_m_magnitude_db, label='p=' + str(orders[i]))
+        plt.title("FIR Filter responses - " + str(np.amin(orders)) + " < p < " + str(np.amax(orders)))
+        plt.xlabel("w")
+        plt.ylabel("H[w] (db)")
         plt.xlim(x_range)
         plt.ylim(y_range)
 
@@ -115,72 +113,79 @@ def get_signal_envelope(x_n_abs, h_n):
     # convolve it with a FIR filter with pi/100 -> -3db gain
     return np.convolve(x_n_abs, h_n)
 
+
+def designRIF(w_barre_coupure, nb_ech):
+    # Find a valid filter that match our condition pi/100 -> -3db
+    orders = range(100, 2000, 100)
+    x_range = [w_barre_coupure - 0.0005, w_barre_coupure + 0.0005]
+    y_range = [-3 - 0.05, -3 + 0.05]
+    find_valid_rif(w_barre_coupure, orders, nb_ech, x_range, y_range)
+
+    # From this analysis, we see that higher orders are better, we will test around 900
+    orders = range(850, 950, 10)
+    x_range = [w_barre_coupure - 0.0002, w_barre_coupure + 0.0002]
+    y_range = [-3 - 0.05, -3 + 0.05]
+    find_valid_rif(w_barre_coupure, orders, nb_ech, x_range, y_range)
+
+    # Results show between 880 and 890
+    orders = range(880, 890, 1)
+    x_range = [w_barre_coupure - 0.00001, w_barre_coupure + 0.00001]
+    y_range = [-3 - 0.02, -3 + 0.02]
+    find_valid_rif(w_barre_coupure, orders, nb_ech, x_range, y_range)
+
+
 def analyzeWav(file):
     # Read file
     fe, x_n = wavfile.read(file)
 
     w_barre_coupure = np.pi / 1000
 
+    # Plot initial signal
     plt.plot(x_n)
+    plt.title("Initial x[n] read from file")
+    plt.xlabel("n")
+    plt.ylabel("x[n]")
     plt.show()
 
-    #Hanning ?
-    # window = np.hanning(len(x_n))
-    # x_n_hanning = x_n*window
+    # Uncomment next line to show plots that led to p = 884 for FIR order
+    # Conclusion : p = 884 , gets 5 x 10^-7 difference from pi/100 for -3db
+    # designRIF(w_barre_coupure, len(x_n))
 
-    # Caclulate tfd on signal from file
-    X_m, X_phase, X_magnitude = get_tfd(x_n)
+    # Compute signal envelope
+    p = 884
+    h_n = get_rif_impulse_response(w_barre_coupure, p, len(x_n), False)
+    envelope = get_signal_envelope(abs(x_n), h_n)
+    plt.plot(envelope)
+    plt.title("x[n] envelope")
+    plt.xlabel("n")
+    plt.ylabel("x[n]")
+    plt.show()
 
-    # Fin max amplitude from x_n
-    max_amplitude = np.amax(X_magnitude)
+    # Hanning
+    window = np.hanning(len(x_n))
+    x_n_hanning = x_n * window
+    plt.plot(x_n_hanning)
+    plt.title("Initial x[n] with hanning window")
+    plt.xlabel("n")
+    plt.ylabel("x[n]")
+    plt.show()
+
+    # Caclulate tfd on signal after hanning was applied
+    X_m, X_phase, X_magnitude = get_tfd(x_n_hanning)
 
     # Get max 32 best sinusoids
-    principal_X_m, principal_phases, principal_magnitudes = get_principal_sinusoids(X_m, X_phase, X_magnitude,
-                                                                                    max_amplitude)
+    m_indexes, principal_X_m = get_principal_sinusoids(X_m)
 
-    # Find a valid filter that match our condition pi/100 -> -3db
-    # orders = range(64, 2048, 64)
-    # x_range = [w_barre_coupure - 0.0005, w_barre_coupure + 0.0005]
-    # y_range = [-3 - 0.05, -3 + 0.05]
-    # find_valid_rif(w_barre_coupure, orders, len(x_n), x_range, y_range)
-
-    ## From this analysis, we see that higher orders are better, we will test around 900
-    # orders = range(850, 950, 10)
-    # x_range = [w_barre_coupure - 0.0002, w_barre_coupure + 0.0002]
-    # y_range = [-3 - 0.05, -3 + 0.05]
-    # find_valid_rif(w_barre_coupure, orders, len(x_n), x_range, y_range)
-
-    #Results show between 880 and 890
-    orders = range(880, 890, 1)
-    x_range = [w_barre_coupure - 0.00001, w_barre_coupure + 0.00001]
-    y_range = [-3 - 0.02, -3 + 0.02]
-    # find_valid_rif(w_barre_coupure, orders, len(x_n), x_range, y_range)
-
-    #Conclusion : p = 884 , gets 5 x 10^-7 difference from pi/100 for -3db
-    p = 884
-    h_n = get_rif_impulse_response(w_barre_coupure, p, len(x_n))
-    enveloppe = get_signal_envelope(abs(x_n), h_n)
-    plt.plot(enveloppe)
+    #Synthetize signal by adding all best sinusoids and multiplying by the enveloppe
+    synthetized_signal = synthetize_signal(principal_X_m, m_indexes, envelope, len(x_n))
+    plt.plot(synthetized_signal)
+    plt.title("Synthetized signal x[n]")
+    plt.xlabel("n")
+    plt.ylabel("x[n]")
     plt.show()
-
-    synthetized_signal = synthetize_signal(principal_phases, principal_magnitudes, enveloppe)
 
     wavfile.write("note_guitare_LAd_output.wav", fe, synthetized_signal)
 
-    # Get enveloppe from signal
-    # get_signal_envelope(x_n, w_barre_coupure)
-    #
-    # plt.subplot(211)
-    # plt.title("Fonction")
-    # plt.plot(x_n)
-    #
-    # plt.subplot(223)
-    # plt.title("Phase")
-    # plt.stem(principal_phases)
-    #
-    # plt.subplot(224)
-    # plt.title("Magnitude")
-    # plt.stem(principal_magnitudes)
 
 if __name__ == "__main__":
     analyzeWav(filePath)
