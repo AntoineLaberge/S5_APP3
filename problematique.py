@@ -4,17 +4,49 @@ from scipy.io import wavfile
 
 filePath = "./note_guitare_LAd.wav"
 
+def get_k_index(note):
+    mapping = {
+        "DO" : -10,
+        "DO#": -9,
+        "RE" : -8,
+        "RE#": -7,
+        "MI" : -6,
+        "FA" : -5,
+        "FA#": -4,
+        "SOL": -3,
+        "SOL#":-2,
+        "LA" : -1,
+        "LA#": 0,
+        "SI" : 1
+    }
+    return mapping[note]
 
-def synthetize_signal(X_m, m_indexes, envelope, nb_ech):
+
+def synthetize_song(X_m, m_indexes, envelope, nb_ech, notes):
+    final_sound = []
+    nb_notes_kept = int(len(envelope)/len(notes))
+    for note in notes:
+        synthetized_note = synthetize_signal(X_m, m_indexes, envelope, nb_ech, note)
+        final_sound = np.concatenate((final_sound,synthetized_note[:nb_notes_kept]))
+    return final_sound
+
+
+def synthetize_signal(X_m, m_indexes, envelope, nb_ech, note):
+    if note == "SILENCE":
+        return np.zeros(len(envelope))
+    k_index = get_k_index(note)
+    factor = 2**(k_index/12)
     phases = np.angle(X_m)
     magnitudes = np.abs(X_m)
 
-    ws = [2 * np.pi * m / nb_ech for m in m_indexes]
+    ws = [2 * np.pi * m * factor / nb_ech for m in m_indexes]
+    ws_normalized = [w - (2 * np.pi) if w > np.pi else w for w in ws]
 
+    ws_normalized.sort()
     sum_sines = np.zeros(len(envelope))
 
     for n in range(len(envelope)):
-        sum_sines[n] = np.sum(magnitudes * np.sin(np.multiply(n,ws) + phases))
+        sum_sines[n] = np.sum(magnitudes * np.sin(np.multiply(n, ws_normalized) + phases))
 
     synthetized_signal = sum_sines * envelope
 
@@ -154,7 +186,7 @@ def analyzeWav(file):
     # Compute signal envelope
     p = 884
     h_n = get_rif_impulse_response(w_barre_coupure, p, len(x_n), False)
-    envelope = get_signal_envelope(abs(x_n), h_n)
+    envelope = get_signal_envelope(np.abs(x_n), h_n)
     plt.plot(envelope)
     plt.title("x[n] envelope")
     plt.xlabel("n")
@@ -177,15 +209,24 @@ def analyzeWav(file):
     m_indexes, principal_X_m = get_principal_sinusoids(X_m)
 
     #Synthetize signal by adding all best sinusoids and multiplying by the enveloppe
-    synthetized_signal = synthetize_signal(principal_X_m, m_indexes, envelope, len(x_n))
+    synthetized_signal = synthetize_signal(principal_X_m, m_indexes, envelope, len(x_n), "LA#")
     plt.plot(synthetized_signal)
     plt.title("Synthetized signal x[n]")
     plt.xlabel("n")
     plt.ylabel("x[n]")
     plt.show()
-
     wavfile.write("note_guitare_LAd_output.wav", fe, synthetized_signal)
 
+    #Beethoven 5th symphony
+    #SOL SOL SOL MI bémol (silence) FA FA FA RE.
+    notes = ["SOL", "SOL", "SOL", "RE#", "SILENCE", "FA", "FA", "FA", "RE"]
+    synthetized_song = synthetize_song(principal_X_m, m_indexes, envelope, len(x_n), notes)
+    plt.plot(synthetized_song)
+    plt.title("Synthetized song x[n]")
+    plt.xlabel("n")
+    plt.ylabel("x[n]")
+    plt.show()
+    wavfile.write("beethoven.wav", fe, synthetized_song)
 
 if __name__ == "__main__":
     analyzeWav(filePath)
