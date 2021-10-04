@@ -126,4 +126,4 @@ def question2():
 
 
 if __name__ == "__main__":
-    question2()
+    question1()
