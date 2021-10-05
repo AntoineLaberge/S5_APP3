@@ -198,17 +198,17 @@ def plot_normalized_freq_responses(H_ms, w_barre, nb_ech, orders, x_range, y_ran
     # Plot H(w), normalize freq to get w instead of m
     w = [2 * np.pi * m / nb_ech for m in range(nb_ech)]
 
-    for i in range(len(H_ms)):
+    plt.figure()
+    for i in range(len(orders)):
         H_m_magnitude_db = to_db(abs(H_ms[i]))
-        plt.figure()
         plt.plot(w, H_m_magnitude_db, label='p=' + str(orders[i]))
         plt.title("Réponses des filtres RIF - " + str(np.amin(orders)) + " < p < " + str(np.amax(orders)))
         plt.xlabel("w (rad/ech)")
         plt.ylabel("Amplitude (db)")
         plt.xlim(x_range)
         plt.ylim(y_range)
-
     plt.legend()
+    plt.show()
     return
 
 
@@ -325,6 +325,9 @@ def analyze_lad(file):
     plt.xlabel("n (s)")
     plt.ylabel("Amplitude")
 
+    X_m, X_phase, X_magnitude = get_tfd(synthetized_signal)
+    plot_spectrum(X_m, "Spectre de Fourier de la note LA# synthétisée", fe)
+
     plt.figure()
     plt.plot(synthetized_song)
     plt.title("5e symphonie de Beethoven synthetisée")
@@ -368,7 +371,6 @@ def analyze_basson():
     plt.title("Enveloppe du signal - Basson + 1KHz")
     plt.xlabel("n (s)")
     plt.ylabel("Amplitude")
-    plt.show()
 
     #################################
 
@@ -409,6 +411,8 @@ def analyze_basson():
     plt.title("Enveloppe du signal - Basson filtré")
     plt.xlabel("n (s)")
     plt.ylabel("Amplitude")
+
+    # Uncomment next line to show plots
     plt.show()
 
     ###########################################
