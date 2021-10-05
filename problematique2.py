@@ -24,15 +24,17 @@ def to_db(h_n):
 
 
 def reponse_impulsionnelle_lp(P, K):
-    hlp_n = [K / P if n == 0 else ((1 / P) * ((np.sin((np.pi * n * K) / P)) / (np.sin((np.pi * n) / P)))) for n in range(int((-P / 2) + 1), int((P / 2)))]
+    hlp_n = [K / P if n == 0 else ((1 / P) * ((np.sin((np.pi * n * K) / P)) / (np.sin((np.pi * n) / P)))) for n in range(int((-P / 2) + 1), int((P / 2) + 1))]
 
-    return hlp_n
+    return np.hanning(P) * hlp_n
 
 
-def reponse_impulsionnelle_bs(hlp_n, w0):
-    delta_n = [1 if n == int(len(hlp_n)/2) else 0 for n in range(len(hlp_n))]
+def reponse_impulsionnelle_bs(hlp_n, w0, P):
+    n = np.arange(-int(P / 2) + 1, int(P / 2) + 1)
 
-    hbs_n = [delta_n[n] - (2 * hlp_n[n] * np.cos(np.multiply(w0, n))) for n in range(len(hlp_n))]
+    delta_n = np.array([int(val==0) for val in n])
+
+    hbs_n = delta_n - (2 * hlp_n * np.cos(w0 * n))
 
     return hbs_n
 
@@ -49,20 +51,69 @@ def coupe_bande_rif(file):
     m = (f2 * P) / fe
     K = (2 * m) + 1
 
-    hlp_n = reponse_impulsionnelle_lp(P, K)
-    hbs_n = reponse_impulsionnelle_bs(hlp_n, w0)
+    hlp_n = reponse_impulsionnelle_lp(P, int(K))
+    hbs_n = reponse_impulsionnelle_bs(hlp_n, w0, P)
 
-    window = np.hanning(len(x_n))
-    x_n_hanning = x_n * window
+    Hlp = np.abs(np.fft.fft(hlp_n))
+    Hbs = np.abs(np.fft.fft(hbs_n))
+    freqs = [m/len(Hbs)*fe for m in range(len(Hbs))]
 
-    X_m, X_phase, X_magnitude = get_tfd(x_n_hanning)
 
-    signal_filtered = np.convolve(np.abs(x_n), hbs_n)
+    signal_filtered = np.convolve(hbs_n, x_n)
 
-    wavfile.write("basson_filtered.wav", fe, signal_filtered)
+    wavfile.write("basson_filtered.wav", fe, signal_filtered.astype(np.int16))
 
-    plt.figure()
-    plt.stem(hbs_n)
+    # Graphique de la reponse a l'impulsion hbs(n) normalise en frequence
+    plt.figure("Figure 1")
+    plt.stem(freqs, Hbs)
+    plt.xlim([900, 1100])
+    plt.title("Réponse impulsionnelle du filtre coupe-bande normalisée en fréquence")
+    plt.xlabel("Frequence")
+    plt.ylabel("Amplitude")
+
+    # Graphique de la reponse a l'impulsion hbs(n)
+    plt.figure("Figure 2")
+    plt.plot(hbs_n)
+    plt.title("Réponse impulsionnelle du filtre coupe-bande (Ordre = 6000)")
+    plt.xlabel("n")
+    plt.ylabel("Amplitude")
+
+    # Graphique de la réponse à une sinusoïde de 1000 Hz
+    sine = [np.sin(2 * np.pi * 1000 * x/fe) for x in range(len(x_n))]
+    filtered_sine = np.convolve(sine, hbs_n)
+    plt.figure("Figure 3")
+    plt.plot(filtered_sine)
+    plt.title("Réponse à une sinusoïde de 1000 Hz")
+    plt.xlabel("n")
+    plt.ylabel("Amplitude")
+
+    # Graphiques amplitude et phase de la réponse en fréquence
+    plt.figure("Figure 4")
+    plt.subplot(211)
+    plt.plot(freqs, np.abs(hbs_n))
+    plt.title("Amplitude de l'impulsion hbs(n) normalisée en fréquence")
+    plt.xlabel("Frequence")
+    plt.ylabel("Amplitude")
+    plt.subplot(212)
+    plt.plot(freqs, np.angle(hbs_n))
+    plt.title("Phase de l'impulsion hbs(n) normalisée en fréquence")
+    plt.xlabel("Frequence")
+    plt.ylabel("Phase")
+
+    # Graphiques des spectres d’amplitude des signaux basson avant et après filtrage
+    plt.figure("Figure 5")
+    plt.subplot(211)
+    plt.plot(x_n)
+    plt.title("Spectre d'amplitude des signaux basson avant filtrage")
+    plt.xlabel("n")
+    plt.ylabel("Amplitude")
+    plt.subplot(212)
+    plt.plot(signal_filtered)
+    plt.title("Spectre d'amplitude des signaux basson après filtrage")
+    plt.xlabel("n")
+    plt.ylabel("Amplitude")
+
+
     plt.show()
 
 if __name__ == "__main__":
