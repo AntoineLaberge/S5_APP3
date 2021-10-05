@@ -1,3 +1,5 @@
+import time
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import wavfile
@@ -44,16 +46,21 @@ def get_k_index_from_note(note):
 def synthetize_song(X_m, m_indexes, envelope, nb_ech, notes):
     final_sound = []
     nb_notes_kept = int(len(envelope) / len(notes))
+    last_note = ""
+    last_synthetized_note = []
     for note in notes:
-        synthetized_note = synthetize_signal(X_m, m_indexes, envelope, nb_ech, note)
-        final_sound = np.concatenate((final_sound, synthetized_note[:nb_notes_kept]))
+        if note == last_note and len(last_synthetized_note) != 0:
+            final_sound = np.concatenate((final_sound, last_synthetized_note))
+            continue
+        last_note = note
+        last_synthetized_note = synthetize_signal(X_m, m_indexes, envelope, nb_ech, note)[:nb_notes_kept]
+        final_sound = np.concatenate((final_sound, last_synthetized_note))
     return final_sound
 
 
 def synthetize_signal(X_m, m_indexes, envelope, nb_ech, note):
     if note == "SILENCE":
         return np.zeros(len(envelope))
-
     k_index = get_k_index_from_note(note)
     factor = 2 ** (k_index / 12)
     phases = np.angle(X_m)
@@ -62,14 +69,12 @@ def synthetize_signal(X_m, m_indexes, envelope, nb_ech, note):
     ws = [2 * np.pi * m * factor / nb_ech for m in m_indexes]
     ws_normalized = [w - (2 * np.pi) if w > np.pi else w for w in ws]
 
-    sum_sines = np.zeros(len(envelope))
-
-    for n in range(len(envelope)):
-        sum_sines[n] = np.sum(magnitudes * np.sin(np.multiply(n, ws_normalized) + phases))
+    sum_sines = [np.sum(magnitudes * np.sin(np.multiply(n, ws_normalized) + phases)) for n in range(len(envelope))]
 
     synthetized_x_n = sum_sines * envelope
 
-    synthetized_x_n_corrected = [magnitude/np.amax(synthetized_x_n) for magnitude in synthetized_x_n]
+    max_magnitude = np.amax(synthetized_x_n)
+    synthetized_x_n_corrected = [magnitude/max_magnitude for magnitude in synthetized_x_n]
 
     return synthetized_x_n_corrected
 
@@ -105,7 +110,7 @@ def find_n_largest(array, n):
     return np.sort(indexes)
 
 
-def get_principal_sinusoids_v2(X_m, note, fe):
+def get_principal_sinusoids(X_m, note, fe):
     #Transform fund_freq to fund_m using relation f/fe = m/n
     fund_freq = int(get_note_freq(note))
     fund_m = int((fund_freq/fe)*len(X_m))
@@ -125,25 +130,6 @@ def get_principal_sinusoids_v2(X_m, note, fe):
     principal_X_ms = [X_m[m] for m in principal_X_ms_indexes]
 
     return principal_X_ms_indexes, principal_X_ms
-
-
-def get_principal_sinusoids(X_m):
-    # Fin max amplitude from X_m
-    X_max = np.amax(abs(X_m))
-    m_indexes = []
-    threshold = X_max * 0.1
-
-    X_magnitudes = np.abs(X_m)
-
-    # For each amp, check if its > threshold and > neighbours
-    for i in range(len(X_magnitudes) - 1):
-        if X_magnitudes[i] > threshold and X_magnitudes[i] > X_magnitudes[i - 1] and X_magnitudes[i] > X_magnitudes[
-            i + 1]:
-            m_indexes.append(i)
-
-    principal_X_m = [X_m[i] for i in m_indexes]
-
-    return m_indexes, principal_X_m
 
 
 def to_db(values):
@@ -191,7 +177,6 @@ def plot_normalized_freq_responses(H_ms, w_barre, nb_ech, orders, x_range, y_ran
         plt.ylim(y_range)
 
     plt.legend()
-    plt.show()
     return
 
 
@@ -239,11 +224,11 @@ def analyzeWav(file):
     w_barre_coupure = np.pi / 1000
 
     # Plot initial signal
+    plt.figure()
     plt.plot(x_n)
     plt.title("Initial x[n] read from file")
     plt.xlabel("n")
     plt.ylabel("x[n]")
-    plt.show()
 
     # Uncomment next line to show plots that led to p = 884 for FIR order
     # Conclusion : p = 884 , gets 5 x 10^-7 difference from pi/100 for -3db
@@ -253,49 +238,54 @@ def analyzeWav(file):
     p = 884
     h_n = get_rif_impulse_response(w_barre_coupure, p, len(x_n), False)
     envelope = get_signal_envelope(np.abs(x_n), h_n)
+    plt.figure()
     plt.plot(envelope)
     plt.title("x[n] envelope")
     plt.xlabel("n")
     plt.ylabel("x[n]")
-    plt.show()
 
     # Hanning
     window = np.hanning(len(x_n))
     x_n_hanning = x_n * window
+    plt.figure()
     plt.plot(x_n_hanning)
     plt.title("Initial x[n] with hanning window")
     plt.xlabel("n")
     plt.ylabel("x[n]")
-    plt.show()
 
     # Caclulate tfd on signal after hanning was applied
     X_m, X_phase, X_magnitude = get_tfd(x_n_hanning)
 
     # Get max 32 best sinusoids
-    # m_indexes, principal_X_m = get_principal_sinusoids(X_m)
+    m_indexes, principal_X_ms = get_principal_sinusoids(X_m, "LA#", fe)
 
-    m_indexes_v2, principal_X_m_v2 = get_principal_sinusoids_v2(X_m, "LA#", fe)
-
+    start_LA = time.time()
     # Synthetize signal by adding all best sinusoids and multiplying by the enveloppe
-    synthetized_signal = synthetize_signal(principal_X_m_v2, m_indexes_v2, envelope, len(x_n), "LA#")
+    synthetized_signal = synthetize_signal(principal_X_ms, m_indexes, envelope, len(x_n), "LA#")
+    plt.figure()
     plt.plot(synthetized_signal)
     plt.title("Synthetized signal x[n]")
     plt.xlabel("n")
     plt.ylabel("x[n]")
-    plt.show()
     wavfile.write("note_guitare_LAd_output.wav", fe, np.array(synthetized_signal, dtype=np.float32))
+    end_LA = time.time()
+    print("time for synthetizing LA# : " + str(end_LA - start_LA))
 
+    start_beethoven = time.time()
     # Beethoven 5th symphony
     # SOL SOL SOL MI bémol (silence) FA FA FA RE.
     notes = ["SOL", "SOL", "SOL", "RE#", "SILENCE", "FA", "FA", "FA", "RE"]
-    synthetized_song = synthetize_song(principal_X_m_v2, m_indexes_v2, envelope, len(x_n), notes)
+    synthetized_song = synthetize_song(principal_X_ms, m_indexes, envelope, len(x_n), notes)
+    plt.figure()
     plt.plot(synthetized_song)
     plt.title("Synthetized song x[n]")
     plt.xlabel("n")
     plt.ylabel("x[n]")
+    wavfile.write("beethoven.wav", fe, np.array(synthetized_song, dtype=np.float32))
+    end_beethoven = time.time()
+    print("time for synthetizing 5th symphony : " + str(end_beethoven - start_beethoven))
+    print("time for both synths : " + str(end_beethoven - start_LA))
     plt.show()
-    wavfile.write("beethoven.wav", fe, synthetized_song)
-
 
 if __name__ == "__main__":
     analyzeWav(filePath)
