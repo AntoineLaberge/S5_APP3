@@ -4,16 +4,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import wavfile
 
-filePath = "./note_guitare_LAd.wav"
+file_path_la = "./note_guitare_LAd.wav"
+file_path_basson = "./note_basson_plus_sinus_1000_Hz.wav"
+file_path_basson_filtered = "./basson_filtered.wav"
 
-def plot_spectrum(signal, title):
+def plot_spectrum(signal, title, fe):
+    m_indexes = [m for m in range(len(signal))]
+    freqs = convert_m_to_f(m_indexes, len(signal), fe)
     magnitude = np.abs(signal)
     magnitude_db = to_db(magnitude)
 
     plt.figure()
-    plt.plot(magnitude_db)
+    plt.plot(freqs, magnitude_db)
     plt.title(title)
-    plt.xlabel("m (frequences, Hz)")
+    plt.xlabel("frequence (Hz)")
     plt.ylabel("Amplitude (dB)")
 
 def convert_m_to_f(m_indexes, nb_ech, fe):
@@ -36,6 +40,7 @@ def print_signal_information(frequencies, magnitudes, phases):
 
 def get_note_freq(note):
     mapping = {
+        "BASSON": 240,
         "DO": 261.6,
         "DO#": 277.2,
         "RE": 293.7,
@@ -137,9 +142,8 @@ def find_n_largest(array, n):
     return np.sort(indexes)
 
 
-def get_principal_sinusoids(X_m, note, fe):
+def get_principal_sinusoids(X_m, fund_freq, fe):
     #Transform fund_freq to fund_m using relation f/fe = m/n
-    fund_freq = int(get_note_freq(note))
     fund_m = int((fund_freq/fe)*len(X_m))
 
     # Get indexes for X_ms that are a multiple of fundamental m.
@@ -196,6 +200,7 @@ def plot_normalized_freq_responses(H_ms, w_barre, nb_ech, orders, x_range, y_ran
 
     for i in range(len(H_ms)):
         H_m_magnitude_db = to_db(abs(H_ms[i]))
+        plt.figure()
         plt.plot(w, H_m_magnitude_db, label='p=' + str(orders[i]))
         plt.title("Réponses des filtres RIF - " + str(np.amin(orders)) + " < p < " + str(np.amax(orders)))
         plt.xlabel("w (rad/ech)")
@@ -224,7 +229,7 @@ def get_signal_envelope(x_n_abs, h_n):
     return np.convolve(x_n_abs, h_n)
 
 
-def designRIF(w_barre_coupure, nb_ech):
+def design_rif(w_barre_coupure, nb_ech):
     # Find a valid filter that match our condition pi/100 -> -3db
     orders = range(100, 2000, 100)
     x_range = [w_barre_coupure - 0.0005, w_barre_coupure + 0.0005]
@@ -244,49 +249,30 @@ def designRIF(w_barre_coupure, nb_ech):
     find_valid_rif(w_barre_coupure, orders, nb_ech, x_range, y_range)
 
 
-def analyzeWav(file):
+def analyze_lad(file):
     # Read file
     fe, x_n = wavfile.read(file)
 
     w_barre_coupure = np.pi / 1000
 
-    # Plot initial signal
-    plt.figure()
-    plt.plot(x_n)
-    plt.title("Signal discret x[n] - LA#")
-    plt.xlabel("n (s)")
-    plt.ylabel("Amplitude")
-
     # Uncomment next line to show plots that led to p = 884 for FIR order
     # Conclusion : p = 884 , gets 5 x 10^-7 difference from pi/100 for -3db
-    # designRIF(w_barre_coupure, len(x_n))
+    # design_rif(w_barre_coupure, len(x_n))
 
     # Compute signal envelope
     p = 884
     h_n = get_rif_impulse_response(w_barre_coupure, p, len(x_n), False)
     envelope = get_signal_envelope(np.abs(x_n), h_n)
-    plt.figure()
-    plt.plot(envelope)
-    plt.title("Enveloppe du signal - LA#")
-    plt.xlabel("n (s)")
-    plt.ylabel("Amplitude")
 
     # Hanning
     window = np.hanning(len(x_n))
     x_n_hanning = x_n * window
-    plt.figure()
-    plt.plot(x_n_hanning)
-    plt.title("Fenêtre de hanning applique sur le signal - LA#")
-    plt.xlabel("n (s)")
-    plt.ylabel("Amplitude")
 
     # Caclulate tfd on signal after hanning was applied
     X_m, X_phase, X_magnitude = get_tfd(x_n_hanning)
 
-    plot_spectrum(X_m, "Spectre de Fourier de la note LA#")
-
     # Get max 32 best sinusoids
-    m_indexes, principal_X_ms = get_principal_sinusoids(X_m, "LA#", fe)
+    m_indexes, principal_X_ms = get_principal_sinusoids(X_m, get_note_freq("LA#"), fe)
 
     #Print frequencies, magnitudes, phases
     print_signal_information(convert_m_to_f(m_indexes, len(x_n), fe), np.abs(principal_X_ms), np.angle(principal_X_ms))
@@ -294,11 +280,7 @@ def analyzeWav(file):
     start_LA = time.time()
     # Synthetize signal by adding all best sinusoids and multiplying by the enveloppe
     synthetized_signal = synthetize_signal(principal_X_ms, m_indexes, envelope, len(x_n), "LA#")
-    plt.figure()
-    plt.plot(synthetized_signal)
-    plt.title("Note synthétisée - LA#")
-    plt.xlabel("n (s)")
-    plt.ylabel("Amplitude")
+
     wavfile.write("note_guitare_LAd_output.wav", fe, np.array(synthetized_signal, dtype=np.float32))
     end_LA = time.time()
     print("time for synthetizing LA# : " + str(end_LA - start_LA))
@@ -308,17 +290,129 @@ def analyzeWav(file):
     # SOL SOL SOL MI bémol (silence) FA FA FA RE.
     notes = ["SOL", "SOL", "SOL", "RE#", "SILENCE", "FA", "FA", "FA", "RE"]
     synthetized_song = synthetize_song(principal_X_ms, m_indexes, envelope, len(x_n), notes)
+
+    wavfile.write("beethoven.wav", fe, np.array(synthetized_song, dtype=np.float32))
+    end_beethoven = time.time()
+    print("time for synthetizing 5th symphony : " + str(end_beethoven - start_beethoven))
+    print("time for both synths : " + str(end_beethoven - start_LA))
+
+    ############# Plots #####################
+
+    # Plot initial signal
+    plt.figure()
+    plt.plot(x_n)
+    plt.title("Signal discret x[n] - LA#")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
+
+    plot_spectrum(X_m, "Spectre de Fourier de la note LA#", fe)
+
+    plt.figure()
+    plt.plot(envelope)
+    plt.title("Enveloppe du signal - LA#")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
+
+    plt.figure()
+    plt.plot(x_n_hanning)
+    plt.title("Fenêtre de hanning applique sur le signal - LA#")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
+
+    plt.figure()
+    plt.plot(synthetized_signal)
+    plt.title("Note synthétisée - LA#")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
+
     plt.figure()
     plt.plot(synthetized_song)
     plt.title("5e symphonie de Beethoven synthetisée")
     plt.xlabel("n (s)")
     plt.ylabel("Amplitude")
-    wavfile.write("beethoven.wav", fe, np.array(synthetized_song, dtype=np.float32))
-    end_beethoven = time.time()
-    print("time for synthetizing 5th symphony : " + str(end_beethoven - start_beethoven))
-    print("time for both synths : " + str(end_beethoven - start_LA))
-    #Uncomment to next line to show plots
-    #plt.show()
+
+    #Uncomment next line to show plots
+    plt.show()
+
+def analyze_basson():
+    # Read original basson file
+    fe, x_n = wavfile.read(file_path_basson)
+
+    # Hanning
+    window = np.hanning(len(x_n))
+    x_n_hanning = x_n * window
+
+    #Fourier spectrum basson
+    X_m, X_phase, X_magnitude = get_tfd(x_n_hanning)
+
+    w_barre_coupure = np.pi / 1000
+
+    # Compute signal envelope
+    p = 884
+    h_n = get_rif_impulse_response(w_barre_coupure, p, len(x_n), False)
+    envelope = get_signal_envelope(np.abs(x_n), h_n)
+
+    ############ Plots ############
+
+    # Plot initial signal
+    plt.figure()
+    plt.plot(x_n)
+    plt.title("Signal discret x[n] - Basson + 1KHz")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
+
+    plot_spectrum(X_m, "Spectre de Fourier du Basson avec la 1KHz", fe)
+
+    plt.figure()
+    plt.plot(envelope)
+    plt.title("Enveloppe du signal - Basson + 1KHz")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
+    plt.show()
+
+    #################################
+
+    #Analysis filtered basson
+
+    # Read filtered basson file
+    fe, x_n = wavfile.read(file_path_basson_filtered)
+
+    # Fourier spectrum basson
+    X_m, X_phase, X_magnitude = get_tfd(x_n)
+
+    w_barre_coupure = np.pi / 1000
+
+    # Compute signal envelope
+    p = 884
+    h_n = get_rif_impulse_response(w_barre_coupure, p, len(x_n), False)
+    envelope = get_signal_envelope(np.abs(x_n), h_n)
+
+    # Get max 32 best sinusoids
+    m_indexes, principal_X_ms = get_principal_sinusoids(X_m, get_note_freq("BASSON"), fe)
+
+    # Print frequencies, magnitudes, phases
+    print_signal_information(convert_m_to_f(m_indexes, len(x_n), fe), np.abs(principal_X_ms), np.angle(principal_X_ms))
+
+    ############ Plots ############
+
+    # Plot initial signal
+    plt.figure()
+    plt.plot(x_n)
+    plt.title("Signal discret x[n] - Basson filtré")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
+
+    plot_spectrum(X_m, "Spectre de Fourier du Basson filtré", fe)
+
+    plt.figure()
+    plt.plot(envelope)
+    plt.title("Enveloppe du signal - Basson filtré")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
+    plt.show()
+
+    ###########################################
 
 if __name__ == "__main__":
-    analyzeWav(filePath)
+    analyze_lad(file_path_la)
+    analyze_basson()

@@ -41,6 +41,7 @@ def reponse_impulsionnelle_bs(hlp_n, w0, P):
 
 def coupe_bande_rif(file):
     fe, x_n = wavfile.read(file)
+
     P = 6000
     f1 = 1000
     f2 = 40
