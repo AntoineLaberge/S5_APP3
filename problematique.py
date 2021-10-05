@@ -6,6 +6,33 @@ from scipy.io import wavfile
 
 filePath = "./note_guitare_LAd.wav"
 
+def plot_spectrum(signal, title):
+    magnitude = np.abs(signal)
+    magnitude_db = to_db(magnitude)
+
+    plt.figure()
+    plt.plot(magnitude_db)
+    plt.title(title)
+    plt.xlabel("m (frequences, Hz)")
+    plt.ylabel("Amplitude (dB)")
+
+def convert_m_to_f(m_indexes, nb_ech, fe):
+    #F/fe = m/n
+    #F = Fe * m/n
+    return [fe*(m/nb_ech) for m in m_indexes]
+
+def print_signal_information(frequencies, magnitudes, phases):
+    two_dec_freqs = [float("{:.2f}".format(f)) for f in frequencies]
+    two_dec_magnitudes = [float("{:.2f}".format(m)) for m in magnitudes]
+    two_dec_phases= [float("{:.2f}".format(p)) for p in phases]
+    print("freqs: " + str(frequencies))
+    print("two decimals freqs: " + str(two_dec_freqs))
+    print("magns: " + str(magnitudes))
+    print("two decimals magns: " + str(two_dec_magnitudes))
+    print("phases" + str(phases))
+    print("two decimals phases: " + str(two_dec_phases))
+    return
+
 
 def get_note_freq(note):
     mapping = {
@@ -170,9 +197,9 @@ def plot_normalized_freq_responses(H_ms, w_barre, nb_ech, orders, x_range, y_ran
     for i in range(len(H_ms)):
         H_m_magnitude_db = to_db(abs(H_ms[i]))
         plt.plot(w, H_m_magnitude_db, label='p=' + str(orders[i]))
-        plt.title("FIR Filter responses - " + str(np.amin(orders)) + " < p < " + str(np.amax(orders)))
-        plt.xlabel("w")
-        plt.ylabel("H[w] (db)")
+        plt.title("Réponses des filtres RIF - " + str(np.amin(orders)) + " < p < " + str(np.amax(orders)))
+        plt.xlabel("w (rad/ech)")
+        plt.ylabel("Amplitude (db)")
         plt.xlim(x_range)
         plt.ylim(y_range)
 
@@ -226,9 +253,9 @@ def analyzeWav(file):
     # Plot initial signal
     plt.figure()
     plt.plot(x_n)
-    plt.title("Initial x[n] read from file")
-    plt.xlabel("n")
-    plt.ylabel("x[n]")
+    plt.title("Signal discret x[n] - LA#")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
 
     # Uncomment next line to show plots that led to p = 884 for FIR order
     # Conclusion : p = 884 , gets 5 x 10^-7 difference from pi/100 for -3db
@@ -240,33 +267,38 @@ def analyzeWav(file):
     envelope = get_signal_envelope(np.abs(x_n), h_n)
     plt.figure()
     plt.plot(envelope)
-    plt.title("x[n] envelope")
-    plt.xlabel("n")
-    plt.ylabel("x[n]")
+    plt.title("Enveloppe du signal - LA#")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
 
     # Hanning
     window = np.hanning(len(x_n))
     x_n_hanning = x_n * window
     plt.figure()
     plt.plot(x_n_hanning)
-    plt.title("Initial x[n] with hanning window")
-    plt.xlabel("n")
-    plt.ylabel("x[n]")
+    plt.title("Fenêtre de hanning applique sur le signal - LA#")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
 
     # Caclulate tfd on signal after hanning was applied
     X_m, X_phase, X_magnitude = get_tfd(x_n_hanning)
 
+    plot_spectrum(X_m, "Spectre de Fourier de la note LA#")
+
     # Get max 32 best sinusoids
     m_indexes, principal_X_ms = get_principal_sinusoids(X_m, "LA#", fe)
+
+    #Print frequencies, magnitudes, phases
+    print_signal_information(convert_m_to_f(m_indexes, len(x_n), fe), np.abs(principal_X_ms), np.angle(principal_X_ms))
 
     start_LA = time.time()
     # Synthetize signal by adding all best sinusoids and multiplying by the enveloppe
     synthetized_signal = synthetize_signal(principal_X_ms, m_indexes, envelope, len(x_n), "LA#")
     plt.figure()
     plt.plot(synthetized_signal)
-    plt.title("Synthetized signal x[n]")
-    plt.xlabel("n")
-    plt.ylabel("x[n]")
+    plt.title("Note synthétisée - LA#")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
     wavfile.write("note_guitare_LAd_output.wav", fe, np.array(synthetized_signal, dtype=np.float32))
     end_LA = time.time()
     print("time for synthetizing LA# : " + str(end_LA - start_LA))
@@ -278,14 +310,15 @@ def analyzeWav(file):
     synthetized_song = synthetize_song(principal_X_ms, m_indexes, envelope, len(x_n), notes)
     plt.figure()
     plt.plot(synthetized_song)
-    plt.title("Synthetized song x[n]")
-    plt.xlabel("n")
-    plt.ylabel("x[n]")
+    plt.title("5e symphonie de Beethoven synthetisée")
+    plt.xlabel("n (s)")
+    plt.ylabel("Amplitude")
     wavfile.write("beethoven.wav", fe, np.array(synthetized_song, dtype=np.float32))
     end_beethoven = time.time()
     print("time for synthetizing 5th symphony : " + str(end_beethoven - start_beethoven))
     print("time for both synths : " + str(end_beethoven - start_LA))
-    plt.show()
+    #Uncomment to next line to show plots
+    #plt.show()
 
 if __name__ == "__main__":
     analyzeWav(filePath)
