@@ -90,13 +90,13 @@ def coupe_bande_rif(file):
     # Graphiques amplitude et phase de la réponse en fréquence
     plt.figure("Figure 4")
     plt.subplot(211)
-    plt.plot(freqs, np.abs(hbs_n))
-    plt.title("Amplitude de l'impulsion hbs(n) normalisée en fréquence")
+    plt.plot(freqs, np.abs(np.fft.fft(hbs_n)))
+    plt.title("Amplitude de l'impulsion hbs(m) normalisée en fréquence")
     plt.xlabel("Frequence")
     plt.ylabel("Amplitude")
     plt.subplot(212)
-    plt.plot(freqs, np.angle(hbs_n))
-    plt.title("Phase de l'impulsion hbs(n) normalisée en fréquence")
+    plt.plot(freqs, np.angle(np.fft.fft(hbs_n)))
+    plt.title("Phase de l'impulsion hbs(m) normalisée en fréquence")
     plt.xlabel("Frequence")
     plt.ylabel("Phase")
 
@@ -112,7 +112,6 @@ def coupe_bande_rif(file):
     plt.title("Spectre d'amplitude des signaux basson après filtrage")
     plt.xlabel("n")
     plt.ylabel("Amplitude")
-
 
     plt.show()
 
