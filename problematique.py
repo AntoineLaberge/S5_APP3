@@ -264,6 +264,10 @@ def analyze_lad(file):
     h_n = get_rif_impulse_response(w_barre_coupure, p, len(x_n), False)
     envelope = get_signal_envelope(np.abs(x_n), h_n)
 
+    # Get H[m]
+    h_m = get_rif_freq_response(h_n)
+    h_m_db = to_db(np.abs(h_m))
+
     # Hanning
     window = np.hanning(len(x_n))
     x_n_hanning = x_n * window
@@ -306,6 +310,12 @@ def analyze_lad(file):
     plt.ylabel("Amplitude")
 
     plot_spectrum(X_m, "Spectre de Fourier de la note LA#", fe)
+
+    plt.figure()
+    plt.plot(h_m_db)
+    plt.title("Réponse en frequence du filtre RIF, ordre N=884 à coefficients constants 1/N - H[m]")
+    plt.xlabel("m (Hz)")
+    plt.ylabel("Amplitude (dB)")
 
     plt.figure()
     plt.plot(envelope)
